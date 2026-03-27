@@ -378,26 +378,37 @@ handle_session_start() {
         ctx="${ctx:+$ctx }Last session had ${fail_count} failed command(s)."
     fi
 
-    # 5. Project lifetime stats
-    local project_stats
-    project_stats="$(sqlite3 "$DB_PATH" "
-        SELECT COUNT(*), COALESCE(SUM(net_lines),0), COALESCE(SUM(tool_calls),0)
-        FROM daily_summaries WHERE project='$esc_project';
+    # 5. Last insights for this project (decisions, blockers)
+    local recent_insights
+    recent_insights="$(sqlite3 "$DB_PATH" "
+        SELECT type || ': ' || content FROM insights
+        WHERE project='$esc_project'
+        ORDER BY created_at DESC LIMIT 3;
     " 2>/dev/null)" || true
 
-    if [ -n "$project_stats" ]; then
-        local total_days net_lines total_tools
-        total_days="$(echo "$project_stats" | cut -d'|' -f1)"
-        net_lines="$(echo "$project_stats" | cut -d'|' -f2)"
-        total_tools="$(echo "$project_stats" | cut -d'|' -f3)"
-        if [ "$total_days" -gt 0 ] 2>/dev/null; then
-            ctx="${ctx:+$ctx }Project lifetime: ${total_days} active day(s), ${net_lines} net lines, ${total_tools} tool calls."
-        fi
+    if [ -n "$recent_insights" ]; then
+        local insights_text
+        insights_text="$(echo "$recent_insights" | tr '\n' ' | ' | sed 's/ | $//')"
+        ctx="${ctx:+$ctx }Recent insights: ${insights_text}."
+    fi
+
+    # 6. Cross-project: other active projects today
+    local other_projects
+    other_projects="$(sqlite3 "$DB_PATH" "
+        SELECT DISTINCT project FROM sessions
+        WHERE date(started_at) >= date('now', '-3 days')
+        AND project != '$esc_project'
+        ORDER BY started_at DESC LIMIT 5;
+    " 2>/dev/null)" || true
+
+    if [ -n "$other_projects" ]; then
+        local proj_list
+        proj_list="$(echo "$other_projects" | tr '\n' ', ' | sed 's/,$//')"
+        ctx="${ctx:+$ctx }Also active recently: ${proj_list}."
     fi
 
     if [ -n "$ctx" ]; then
-        local instruction="When this session ends, your last message will be stored as the session summary for this project. Keep your final message concise and descriptive of what was accomplished."
-        printf '{"hookSpecificOutput":{"additionalContext":"[Claude Pulse] %s %s"}}' "$(echo "$ctx" | sed 's/"/\\"/g')" "$(echo "$instruction" | sed 's/"/\\"/g')"
+        printf '{"hookSpecificOutput":{"additionalContext":"[Claude Pulse] %s Use /pulse-latest, /pulse-projects, or /pulse-insights to query cross-project data."}}' "$(echo "$ctx" | sed 's/"/\\"/g')"
     fi
 }
 
