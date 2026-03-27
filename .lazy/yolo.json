@@ -10,8 +10,9 @@
         "tasks": [
           "Last session details (duration, files edited, tools used)"
         ],
-        "status": "active",
-        "started": "2026-03-27T12:18:53.810Z"
+        "status": "done",
+        "started": "2026-03-27T12:18:53.810Z",
+        "completed": "2026-03-27T13:30:00.000Z"
       },
       {
         "id": "sprint-2",
@@ -19,7 +20,8 @@
         "tasks": [
           "Cross-project daily summary (sessions, events, top projects)"
         ],
-        "status": "pending"
+        "status": "active",
+        "started": "2026-03-27T13:30:00.000Z"
       },
       {
         "id": "sprint-3",
@@ -33,7 +35,7 @@
     "created": "2026-03-27T12:18:53.810Z",
     "updated": "2026-03-27T12:18:53.810Z"
   },
-  "currentSprint": 0,
+  "currentSprint": 1,
   "status": "running",
   "iterations": 0,
   "maxIterationsPerSprint": 3,
