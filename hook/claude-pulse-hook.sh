@@ -378,18 +378,32 @@ handle_session_start() {
         ctx="${ctx:+$ctx }Last session had ${fail_count} failed command(s)."
     fi
 
-    # 5. Last insights for this project (decisions, blockers)
+    # 5. Accumulated knowledge (patterns, fixes, context) — highest value at session start
+    local knowledge
+    knowledge="$(sqlite3 "$DB_PATH" "
+        SELECT type || ': ' || content FROM insights
+        WHERE project='$esc_project' AND type IN ('pattern','fix','context')
+        ORDER BY created_at DESC LIMIT 3;
+    " 2>/dev/null)" || true
+
+    if [ -n "$knowledge" ]; then
+        local knowledge_text
+        knowledge_text="$(echo "$knowledge" | tr '\n' ' | ' | sed 's/ | $//')"
+        ctx="${ctx:+$ctx }Knowledge: ${knowledge_text}."
+    fi
+
+    # 6. Last session insights (progress, decisions, blockers)
     local recent_insights
     recent_insights="$(sqlite3 "$DB_PATH" "
         SELECT type || ': ' || content FROM insights
-        WHERE project='$esc_project'
+        WHERE project='$esc_project' AND type IN ('progress','decision','blocked')
         ORDER BY created_at DESC LIMIT 3;
     " 2>/dev/null)" || true
 
     if [ -n "$recent_insights" ]; then
         local insights_text
         insights_text="$(echo "$recent_insights" | tr '\n' ' | ' | sed 's/ | $//')"
-        ctx="${ctx:+$ctx }Recent insights: ${insights_text}."
+        ctx="${ctx:+$ctx }Last session: ${insights_text}."
     fi
 
     # 6. Cross-project: other active projects today
