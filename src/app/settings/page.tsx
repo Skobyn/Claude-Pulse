@@ -29,6 +29,9 @@ export default function SettingsPage() {
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportStart, setExportStart] = useState("");
+  const [exportEnd, setExportEnd] = useState("");
 
   const loadSettings = () => {
     fetch("/api/settings")
@@ -225,6 +228,76 @@ export default function SettingsPage() {
         {message && (
           <p className="mt-3 font-mono text-xs text-zinc-400">{message}</p>
         )}
+      </div>
+
+      {/* Export */}
+      <div className="rounded-lg border border-zinc-800 p-5">
+        <h2 className="mb-4 font-mono text-xs uppercase tracking-wider text-zinc-500">
+          Export
+        </h2>
+        <div className="mb-4 flex items-end gap-3">
+          <div>
+            <label className="block font-mono text-xs text-zinc-500 mb-1">From</label>
+            <input
+              type="date"
+              value={exportStart}
+              onChange={(e) => setExportStart(e.target.value)}
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 font-mono text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block font-mono text-xs text-zinc-500 mb-1">To</label>
+            <input
+              type="date"
+              value={exportEnd}
+              onChange={(e) => setExportEnd(e.target.value)}
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 font-mono text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {[
+            { label: "All Data (JSON)", table: "all", format: "json" },
+            { label: "Sessions (CSV)", table: "sessions", format: "csv" },
+            { label: "Events (CSV)", table: "events", format: "csv" },
+            { label: "Insights (CSV)", table: "insights", format: "csv" },
+            { label: "Insights (JSON)", table: "insights", format: "json" },
+          ].map((opt) => (
+            <button
+              key={`${opt.table}-${opt.format}`}
+              disabled={exporting}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  const params = new URLSearchParams({ format: opt.format, table: opt.table });
+                  if (exportStart) params.set("start", exportStart);
+                  if (exportEnd) params.set("end", exportEnd);
+                  const r = await fetch(`/api/export?${params}`);
+                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                  const blob = await r.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  const ext = opt.format === "csv" ? "csv" : "json";
+                  a.href = url;
+                  a.download = `claude-pulse-${opt.table}-${new Date().toISOString().split("T")[0]}.${ext}`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setMessage(`Exported ${opt.table} as ${opt.format.toUpperCase()}`);
+                } catch (e) {
+                  setMessage(`Export failed: ${e instanceof Error ? e.message : "Unknown"}`);
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              className="rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-2 font-mono text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 font-mono text-xs text-zinc-600">
+          Leave dates empty to export all data. Also available via CLI: claude-pulse export --format json
+        </p>
       </div>
 
       {/* Docs Link */}
