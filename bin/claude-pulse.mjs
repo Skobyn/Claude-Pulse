@@ -166,8 +166,8 @@ function runInit() {
   initDb();
   mergeHooks();
   console.log("\n  Done! Claude Pulse is active for all projects.");
-  console.log("  Run: npx claude-pulse       (open dashboard)");
-  console.log("  Run: npx claude-pulse status (terminal summary)\n");
+  console.log("  Run: claude-pulse start     (open dashboard)");
+  console.log("  Run: claude-pulse status    (terminal summary)\n");
 }
 
 // ─── START ───
@@ -175,25 +175,49 @@ function runInit() {
 function runStart() {
   const port = 3141;
   const projectRoot = join(__dirname, "..");
+  const standaloneServer = join(projectRoot, ".next", "standalone", "server.js");
   const nextDir = join(projectRoot, ".next");
 
-  // Auto-build if no .next directory exists
+  // Prefer standalone server (works globally, no npx/next needed)
+  if (existsSync(standaloneServer)) {
+    console.log(`\n  Claude Pulse dashboard starting on http://localhost:${port}\n`);
+    try {
+      execSync(`node "${standaloneServer}"`, {
+        stdio: "inherit",
+        env: { ...process.env, PORT: String(port), HOSTNAME: "0.0.0.0" },
+      });
+    } catch {
+      // User hit Ctrl+C or server crashed
+    }
+    return;
+  }
+
+  // Fallback: try to build and run (local dev / GitHub clone)
   if (!existsSync(nextDir)) {
     console.log("\n  First run — building dashboard...\n");
     try {
-      execSync(`cd "${projectRoot}" && npm run build`, { stdio: "inherit" });
+      execSync(`cd "${projectRoot}" && npm run build && node bin/copy-static.mjs`, { stdio: "inherit" });
     } catch {
-      console.log("\n  Build failed, starting in dev mode instead.\n");
-      execSync(`cd "${projectRoot}" && npx next dev --port ${port}`, { stdio: "inherit" });
+      console.log("\n  Build failed. Try: cd to the project and run npm install && npm run build\n");
+      process.exit(1);
+    }
+
+    // After build, standalone should exist
+    if (existsSync(standaloneServer)) {
+      console.log(`\n  Claude Pulse dashboard starting on http://localhost:${port}\n`);
+      execSync(`node "${standaloneServer}"`, {
+        stdio: "inherit",
+        env: { ...process.env, PORT: String(port), HOSTNAME: "0.0.0.0" },
+      });
       return;
     }
   }
 
+  // Last resort: npx next start (local development)
   console.log(`\n  Claude Pulse dashboard starting on http://localhost:${port}\n`);
   try {
     execSync(`cd "${projectRoot}" && npx next start --port ${port}`, { stdio: "inherit" });
   } catch {
-    // Fallback to dev mode
     execSync(`cd "${projectRoot}" && npx next dev --port ${port}`, { stdio: "inherit" });
   }
 }
