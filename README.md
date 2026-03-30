@@ -1,220 +1,40 @@
 # Claude Pulse
 
-**Your AI coding companion remembers everything. But do you?**
-
-Claude Pulse gives you a visual memory of every session you've had with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). It captures what you built, what decisions you made, and what's left to do — automatically, in the background, across all your projects.
-
-No setup beyond one command. No cloud accounts. No data leaves your machine.
-
-![Next.js](https://img.shields.io/badge/Next.js-16-black)
-![SQLite](https://img.shields.io/badge/SQLite-WAL-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-
-## Why Claude Pulse?
-
-When you work with Claude Code every day across multiple projects, things get lost. What did you decide last Tuesday? Which project had that bug you fixed? How much progress did you actually make this week?
-
-Claude Pulse solves this by silently tracking every session and building a searchable timeline of your work. It's like git log for your entire Claude Code workflow — not just code changes, but decisions, progress, and blockers too.
-
-**What it captures automatically:**
-
-- **Sessions** — every time you start and stop Claude Code, across all projects
-- **Tool usage** — edits, bash commands, file reads, searches, agent spawns, skill invocations
-- **Code metrics** — lines added and removed, per file, per session, per day
-- **Decisions and progress** — at the end of meaningful sessions, Claude summarizes what was accomplished and what key choices were made
-- **Cross-project context** — Claude becomes aware of your other projects and can tell you what you worked on yesterday
-
-**What it skips:**
-- Trivial sessions (just reading files, checking status) are auto-closed without interruption
-
-Everything is stored locally in a small SQLite database on your machine. Nothing is sent anywhere.
-
-## How to set it up
-
-### What you need first
-
-1. **Claude Code** — the CLI tool from Anthropic ([install guide](https://docs.anthropic.com/en/docs/claude-code))
-2. **Node.js 18 or newer** — download from [nodejs.org](https://nodejs.org) if you don't have it
-3. **jq** and **sqlite3** — small command-line tools
-
-If you're on macOS with [Homebrew](https://brew.sh):
-```bash
-brew install jq sqlite3
-```
-
-On Ubuntu/Debian Linux:
-```bash
-sudo apt install jq sqlite3
-```
-
-### Step 1: Download Claude Pulse
-
-```bash
-git clone https://github.com/Clemens865/Claude-Pulse.git
-cd Claude-Pulse
-npm install
-```
-
-### Step 2: Set it up
+**One command. Global memory for Claude Code.**
 
 ```bash
 npx claude-pulse init
 ```
 
-This does three things automatically:
-1. Creates a folder at `~/.claude-pulse/` to store your data
-2. Installs a small tracking script
-3. Connects it to Claude Code so it starts recording
+Claude Pulse captures every session, every decision, and every line of code across all your projects — automatically, locally, and queryable anytime. It gives Claude Code a persistent memory and gives you a dashboard to see your work.
 
-You'll see a confirmation like this:
-```
-  Claude Pulse — Setup
+No cloud. No accounts. No data leaves your machine.
 
-  [ok] Dependencies found (jq, sqlite3)
-  [ok] Directory: ~/.claude-pulse
-  [ok] Hook installed
-  [ok] Database created with WAL mode
-  [ok] Hooks merged into ~/.claude/settings.json
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![SQLite](https://img.shields.io/badge/SQLite-WAL-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-  Done! Claude Pulse is active for all projects.
-```
+## What it does
 
-### Step 3: Use Claude Code normally
-
-That's it. Just use Claude Code as you normally would — in any project, in any directory. Claude Pulse runs in the background and records everything automatically. You don't need to do anything different.
-
-### Step 4: View your dashboard
-
-Whenever you want to see your activity:
-
-```bash
-npx claude-pulse start
-```
-
-Open your browser to **http://localhost:3141** and you'll see your dashboard.
-
-## The Dashboard
-
-### Overview
-The main page shows your key numbers at a glance:
-- Total sessions, net lines of code written, hours spent, active projects
-- A daily activity table for the last 14 days
-- Most-used tools, skills, and frameworks
-
-### Brain
-The "Brain" page is where the interesting stuff lives. At the end of each meaningful session, Claude Pulse captures structured insights:
-- **Progress** — what was accomplished
-- **Decisions** — key choices and why they were made
-- **Blocked** — what's stuck or left to do
-
-These are displayed as a timeline you can filter by type or project. Think of it as a log of your thinking, not just your typing.
-
-Trivial sessions (just reading files, checking status) are automatically skipped — no noise.
-
-### Projects
-See all your projects ranked by activity. Click any project to see:
-- Session history and duration
-- Most-edited files
-- Daily line counts and tool usage
-
-### Timeline
-A 90-day GitHub-style heatmap showing your coding activity. Darker squares = more active days.
-
-### Session Detail
-Click any session to see the full event timeline — every file edit, bash command, search, and agent spawn, in order.
-
-### Settings
-Database info, record counts, and a button to generate demo data if you want to see how it looks before real data accumulates.
-
-## Quick reference
-
-### Terminal commands
-
-| Command | What it does |
+| Feature | How it works |
 |---------|-------------|
-| `npx claude-pulse init` | First-time setup (safe to re-run for upgrades) |
-| `npx claude-pulse start` | Open the dashboard at localhost:3141 |
-| `npx claude-pulse status` | Quick summary in the terminal |
-| `npx claude-pulse doctor` | Check that everything is working |
-| `npx claude-pulse uninstall` | Remove tracking (your data is kept) |
+| **Session tracking** | Every start, stop, and tool call recorded automatically |
+| **Code metrics** | Lines added/removed per file, per session, per day |
+| **Brain layer** | Structured progress, decisions, and blockers captured at session end |
+| **Smart gating** | Only asks for summaries on meaningful sessions — trivial ones auto-close |
+| **Cross-project context** | Claude knows what you did in other projects when you start a session |
+| **Knowledge capture** | Store patterns, fixes, and context mid-session with `/pulse-remember` |
+| **Audit trail** | User identity, diff capture, and exportable records for compliance |
+| **Dashboard** | Visual overview at localhost:3141 — activity, brain, projects, timeline |
 
-### Slash commands (inside Claude Code)
+## How to set it up
 
-These work in any project — just type them in Claude Code:
+### What you need
 
-| Command | What it does |
-|---------|-------------|
-| `/pulse-projects` | List all your tracked projects with stats and latest progress |
-| `/pulse-projects my-app` | Show details and recent insights for a specific project |
-| `/pulse-latest` | Show recent work across ALL projects — sessions, decisions, blockers |
-| `/pulse-latest 7` | Same but for the last 7 days |
-| `/pulse-insights` | Overview of all captured insights |
-| `/pulse-insights type:decision` | Show all decisions you've made |
-| `/pulse-insights type:blocked` | Show all current blockers |
-| `/pulse-insights auth` | Search your insights for a keyword |
-| `/pulse-remember fix: ...` | Store a fix you discovered — Claude summarizes it cleanly |
-| `/pulse-remember pattern: ...` | Store a recurring pattern or convention |
-| `/pulse-remember context: ...` | Store background knowledge for future sessions |
+1. **Claude Code** ([install guide](https://docs.anthropic.com/en/docs/claude-code))
+2. **Node.js 18+** ([nodejs.org](https://nodejs.org))
+3. **jq** and **sqlite3**
 
-### Remembering things
-
-Session-end summaries capture progress, decisions, and blockers automatically. But some knowledge emerges mid-session — a fix you discovered, a pattern you noticed, context that would help next time.
-
-`/pulse-remember` lets you store these intentionally. Claude reads your input, distills it into a clean one-liner, and stores both:
-- **Content** — Claude's concise summary (what you'll see in the dashboard)
-- **Reasoning** — your original words (preserved for context)
-
-```
-You:    /pulse-remember fix: sqlite3 needs absolute paths in hooks on macOS
-Stored: "SQLite3 in hook scripts requires absolute path on macOS — relative paths fail silently"
-```
-
-These are surfaced at the start of your next session as "Knowledge" — before session-specific context, because accumulated knowledge is more valuable than yesterday's progress.
-
-## How it works (the short version)
-
-```
-You use Claude Code
-       |
-       v
-Claude Code fires hook events (session start, tool use, session end)
-       |
-       v
-A small bash script captures each event → stores in SQLite
-       |
-       v
-The dashboard reads SQLite → shows your analytics
-```
-
-Everything stays on your machine. The database lives at `~/.claude-pulse/tracker.db`.
-
-## How it works (the detailed version)
-
-1. **`claude-pulse init`** adds three hooks to Claude Code's settings file (`~/.claude/settings.json`):
-   - **SessionStart** — records when you begin a session
-   - **PostToolUse** — records each tool call (runs async, doesn't slow Claude down)
-   - **Stop** — finalizes the session, computes daily summaries, and optionally captures structured insights
-
-2. The hook script (`hook/claude-pulse-hook.sh`) receives JSON from Claude Code on stdin, parses it with `jq`, and writes to SQLite with `sqlite3`. It detects languages from file extensions, frameworks from bash commands, and tracks line changes from edits.
-
-3. **Smart session summaries**: When a session ends, the hook checks how much work was done. If it was a meaningful session (edits, commands, agent spawns), it asks Claude for a structured summary. If it was trivial (just reading files), it auto-closes silently.
-
-4. The dashboard is a Next.js app that reads directly from the same SQLite database. No API keys, no cloud services, no accounts.
-
-## Troubleshooting
-
-### "No data showing up"
-
-Run the health check:
-```bash
-npx claude-pulse doctor
-```
-
-This will tell you exactly what's wrong — missing dependencies, hooks not registered, database issues.
-
-### "jq or sqlite3 not found"
-
-Install them:
 ```bash
 # macOS
 brew install jq sqlite3
@@ -223,54 +43,172 @@ brew install jq sqlite3
 sudo apt install jq sqlite3
 ```
 
-Then re-run `npx claude-pulse init`.
+### Install
 
-### "Dashboard won't start"
-
-Make sure port 3141 isn't already in use:
 ```bash
-lsof -i :3141
+git clone https://github.com/Clemens865/Claude-Pulse.git
+cd Claude-Pulse
+npm install
+npx claude-pulse init
 ```
 
-If something is already running on that port, stop it first.
+That's it. Claude Pulse is now active for all projects. Use Claude Code normally — everything is captured in the background.
 
-### "I want to start fresh"
+### View your dashboard
 
-To reset all data:
+```bash
+npx claude-pulse start
+```
+
+Open **http://localhost:3141**.
+
+## The Dashboard
+
+### Overview
+Key numbers at a glance: total sessions, net lines written, hours spent, active projects, streaks. Daily activity for the last 14 days. Top tools, skills, and frameworks.
+
+### Brain
+A searchable timeline of your reasoning — not just your code. Structured entries for progress, decisions, blockers, patterns, and fixes. Filterable by type and project. This is the log of your thinking across sessions.
+
+### Projects
+All projects ranked by activity. Click any project for session history, most-edited files, daily breakdowns.
+
+### Timeline
+90-day GitHub-style heatmap. Darker squares = more active days.
+
+### Session Detail
+Full event-by-event replay of any session. Every edit shows an expandable diff view. User identity (who@hostname) displayed when available.
+
+### Settings
+Database info, record counts, and an export section with project/date filtering. Download your data as JSON or CSV anytime.
+
+## Commands
+
+### Terminal
+
+| Command | What it does |
+|---------|-------------|
+| `npx claude-pulse init` | Set up hooks and database (safe to re-run) |
+| `npx claude-pulse start` | Open the dashboard |
+| `npx claude-pulse status` | Quick terminal summary |
+| `npx claude-pulse doctor` | Health check — verify everything works |
+| `npx claude-pulse export` | Export data as JSON, CSV, or NDJSON |
+| `npx claude-pulse verify` | Audit integrity check |
+| `npx claude-pulse uninstall` | Remove hooks (data preserved) |
+
+Export supports filtering:
+```bash
+claude-pulse export --format json --start 2026-03-01 --end 2026-03-31
+claude-pulse export --format csv --table insights
+```
+
+### Slash commands (inside Claude Code)
+
+These work globally — any project, any directory:
+
+| Command | What it does |
+|---------|-------------|
+| `/pulse-projects` | List all tracked projects with stats |
+| `/pulse-projects my-app` | Details and insights for a specific project |
+| `/pulse-latest` | Last 3 days of work across all projects |
+| `/pulse-latest 7` | Last 7 days |
+| `/pulse-insights` | Overview of all insights |
+| `/pulse-insights type:decision` | All decisions you've made |
+| `/pulse-insights type:blocked` | All current blockers |
+| `/pulse-insights auth` | Search insights by keyword |
+
+### Remembering things
+
+Some knowledge emerges mid-session. `/pulse-remember` captures it:
+
+```
+/pulse-remember fix: sqlite3 needs absolute paths on macOS
+/pulse-remember pattern: all API routes use getDb() singleton
+/pulse-remember context: deploy freeze next week for mobile release
+```
+
+Claude distills your input into a concise summary and stores both layers:
+- **Content** — Claude's clean one-liner (shown in dashboard)
+- **Reasoning** — your original words (preserved for context)
+
+These show up as "Knowledge" at your next session start — before yesterday's progress, because accumulated knowledge is more valuable.
+
+## Audit trail
+
+Claude Pulse captures a complete activity trail suitable for AI code audits:
+
+- **User identity** — every session records who (whoami) and where (hostname)
+- **Diff capture** — edit events store the actual old/new content, viewable in the dashboard
+- **Decision trail** — every DECISION insight is timestamped, project-tagged, and searchable
+- **Export** — download filtered data as JSON or CSV from the dashboard or CLI
+- **Integrity check** — `claude-pulse verify` reports record counts, coverage, and SQLite integrity
+
+For teams asking "what did the AI do?" — Claude Pulse provides every action, every decision, timestamped and queryable.
+
+## How it works
+
+```
+Claude Code session
+       |
+       v
+Hook events (SessionStart, PostToolUse, Stop)
+       |
+       v
+bash script + jq + sqlite3 → ~/.claude-pulse/tracker.db
+       |
+       v
+Next.js dashboard (localhost:3141)
+```
+
+1. **`claude-pulse init`** registers three hooks in Claude Code's settings:
+   - **SessionStart** — records session with user identity
+   - **PostToolUse** — records each tool call with diffs (runs async, non-blocking)
+   - **Stop** — finalizes session, computes summaries, captures structured insights
+
+2. **Smart gating**: at session end, the hook counts write events. Fewer than 3? Auto-close silently. More? Ask Claude for a structured summary (PROGRESS/DECISION/BLOCKED).
+
+3. **Context injection**: at session start, the hook injects last session's summary, accumulated knowledge, and cross-project awareness into Claude's context.
+
+4. The dashboard reads the same SQLite file directly. No API keys, no cloud, no accounts.
+
+## Troubleshooting
+
+**No data showing up?** Run `npx claude-pulse doctor` — it checks deps, hooks, DB, and recent activity.
+
+**jq or sqlite3 not found?** Install them (`brew install jq sqlite3` or `apt install jq sqlite3`), then re-run `npx claude-pulse init`.
+
+**Dashboard won't start?** Check if port 3141 is in use: `lsof -i :3141`.
+
+**Start fresh?** Delete the DB and re-init:
 ```bash
 rm ~/.claude-pulse/tracker.db
 npx claude-pulse init
 ```
 
-To completely remove Claude Pulse:
+**Remove completely:**
 ```bash
-npx claude-pulse uninstall   # removes hooks from Claude Code
-rm -rf ~/.claude-pulse        # removes all data
+npx claude-pulse uninstall   # removes hooks
+rm -rf ~/.claude-pulse        # removes data
 ```
 
 ## Database
 
-All data is stored locally in SQLite at `~/.claude-pulse/tracker.db`:
+SQLite with WAL mode at `~/.claude-pulse/tracker.db`:
 
 | Table | What it stores |
 |-------|---------------|
-| `sessions` | One row per Claude Code session (start time, duration, status, summary) |
-| `tool_events` | Every tool call — edits, reads, bash commands, searches, agent spawns |
-| `insights` | Structured entries: progress, decisions, patterns, fixes, blockers |
-| `daily_summaries` | Pre-computed daily totals (survives if old events are cleaned up) |
+| `sessions` | Session lifecycle, user identity, summary |
+| `tool_events` | Every tool call with timestamps, diffs, and metadata |
+| `insights` | Typed entries: progress, decisions, patterns, fixes, blockers |
+| `daily_summaries` | Pre-computed daily aggregates |
 | `file_activity` | Per-file daily edit/read/write counts |
 
 ## For developers
 
 ### Tech stack
-
-- Next.js 16 (App Router) + React 19 + Tailwind CSS 4
-- better-sqlite3 (WAL mode)
-- TypeScript 5.9
-- Bash hook script (jq + sqlite3)
+Next.js 16 + React 19 + Tailwind CSS 4 + better-sqlite3 + TypeScript 5.9 + bash/jq/sqlite3
 
 ### Development
-
 ```bash
 npm run dev       # Dev server on port 3141
 npm run build     # Production build
@@ -278,15 +216,13 @@ npm run lint      # ESLint
 ```
 
 ### Plugin structure
-
-Claude Pulse can also work as a Claude Code plugin. The repo includes:
-- `.claude-plugin/plugin.json` — plugin metadata
-- `hooks/hooks.json` — auto-registered hooks using `${CLAUDE_PLUGIN_ROOT}`
-- `skills/` — slash commands (`/pulse-status`, `/pulse-doctor`)
+The repo also works as a Claude Code plugin:
+- `.claude-plugin/plugin.json` — metadata
+- `hooks/hooks.json` — auto-registered hooks
+- `skills/` — slash commands
 
 ### Demo data
-
-Visit the Settings page in the dashboard or POST to `/api/seed` to generate 30 days of realistic sample data.
+Visit Settings in the dashboard or POST to `/api/seed` for 30 days of sample data.
 
 ## License
 
