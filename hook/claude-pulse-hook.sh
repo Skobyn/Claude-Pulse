@@ -697,102 +697,116 @@ handle_session_stop() {
         status='$status'
         WHERE id='$(sql_escape "$SESSION_ID")';" 2>/dev/null || true
 
-    # Compute and upsert daily_summary for this session's date
-    local session_date
-    session_date="$(sqlite3 "$DB_PATH" "SELECT date(started_at) FROM sessions WHERE id='$(sql_escape "$SESSION_ID")';" 2>/dev/null)" || session_date="$TODAY"
+    # Compute and upsert daily_summaries — one row PER DAY that had tool activity.
+    # This handles multi-day sessions correctly (e.g. started Mon, closed Wed).
     local esc_project
     esc_project="$(sql_escape "$PROJECT")"
     local esc_sid
     esc_sid="$(sql_escape "$SESSION_ID")"
 
-    # Build JSON aggregation fields from this session's tool_events
-    local skills_json frameworks_json languages_json tool_counts_json
+    # Get all distinct dates that had tool_events in this session
+    local event_dates
+    event_dates="$(sqlite3 "$DB_PATH" "SELECT DISTINCT date(timestamp) FROM tool_events WHERE session_id='$esc_sid' ORDER BY date(timestamp);" 2>/dev/null)" || true
 
-    # Aggregate skill usage: {"commit": 3, "fix-bug": 1}
-    skills_json="$(sqlite3 "$DB_PATH" "
-        SELECT '{' || GROUP_CONCAT('\"' || REPLACE(skill_name, '\"', '\\\"') || '\":' || cnt) || '}'
-        FROM (SELECT skill_name, COUNT(*) as cnt FROM tool_events
-              WHERE session_id='$esc_sid' AND skill_name IS NOT NULL AND skill_name != ''
-              GROUP BY skill_name ORDER BY cnt DESC);
-    " 2>/dev/null)" || skills_json="{}"
-    [ -z "$skills_json" ] || [ "$skills_json" = "{null}" ] && skills_json="{}"
+    # Fallback: if no tool_events, use session start date
+    if [ -z "$event_dates" ]; then
+        event_dates="$(sqlite3 "$DB_PATH" "SELECT date(started_at) FROM sessions WHERE id='$esc_sid';" 2>/dev/null)" || event_dates="$TODAY"
+    fi
 
-    # Aggregate framework detection: {"npm/node": 12, "git": 5}
-    frameworks_json="$(sqlite3 "$DB_PATH" "
-        SELECT '{' || GROUP_CONCAT('\"' || REPLACE(fw, '\"', '\\\"') || '\":' || cnt) || '}'
-        FROM (
-            SELECT TRIM(value) as fw, COUNT(*) as cnt
-            FROM tool_events, json_each('[\"' || REPLACE(REPLACE(detected_framework, ',', '\",\"'), ' ', '') || '\"]')
-            WHERE session_id='$esc_sid' AND detected_framework IS NOT NULL AND detected_framework != ''
-            AND TRIM(value) != ''
-            GROUP BY fw ORDER BY cnt DESC
-        );
-    " 2>/dev/null)" || frameworks_json="{}"
-    [ -z "$frameworks_json" ] || [ "$frameworks_json" = "{null}" ] && frameworks_json="{}"
+    # Loop over each day and upsert its daily_summary
+    echo "$event_dates" | while IFS= read -r event_date; do
+        [ -z "$event_date" ] && continue
+        local esc_date
+        esc_date="$(sql_escape "$event_date")"
 
-    # Aggregate languages: {"TypeScript": 20, "CSS": 5}
-    languages_json="$(sqlite3 "$DB_PATH" "
-        SELECT '{' || GROUP_CONCAT('\"' || REPLACE(language, '\"', '\\\"') || '\":' || cnt) || '}'
-        FROM (SELECT language, COUNT(*) as cnt FROM tool_events
-              WHERE session_id='$esc_sid' AND language IS NOT NULL AND language != '' AND language != 'Unknown'
-              GROUP BY language ORDER BY cnt DESC);
-    " 2>/dev/null)" || languages_json="{}"
-    [ -z "$languages_json" ] || [ "$languages_json" = "{null}" ] && languages_json="{}"
+        # Build per-day JSON aggregation fields
+        local skills_json frameworks_json languages_json tool_counts_json
 
-    # Aggregate tool counts: {"Edit": 30, "Write": 5, "Bash": 8}
-    tool_counts_json="$(sqlite3 "$DB_PATH" "
-        SELECT '{' || GROUP_CONCAT('\"' || tool_name || '\":' || cnt) || '}'
-        FROM (SELECT tool_name, COUNT(*) as cnt FROM tool_events
-              WHERE session_id='$esc_sid'
-              GROUP BY tool_name ORDER BY cnt DESC);
-    " 2>/dev/null)" || tool_counts_json="{}"
-    [ -z "$tool_counts_json" ] || [ "$tool_counts_json" = "{null}" ] && tool_counts_json="{}"
+        skills_json="$(sqlite3 "$DB_PATH" "
+            SELECT '{' || GROUP_CONCAT('\"' || REPLACE(skill_name, '\"', '\\\"') || '\":' || cnt) || '}'
+            FROM (SELECT skill_name, COUNT(*) as cnt FROM tool_events
+                  WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date'
+                  AND skill_name IS NOT NULL AND skill_name != ''
+                  GROUP BY skill_name ORDER BY cnt DESC);
+        " 2>/dev/null)" || skills_json="{}"
+        [ -z "$skills_json" ] || [ "$skills_json" = "{null}" ] && skills_json="{}"
 
-    sqlite3 "$DB_PATH" "
-    INSERT INTO daily_summaries (date, project, session_count, total_duration_seconds,
-        lines_added, lines_removed, net_lines, files_created, files_edited, files_read,
-        tool_calls, bash_commands, bash_failures, searches, agents_spawned,
-        skills_used, frameworks_detected, languages, tool_counts)
-    SELECT
-        '$session_date',
-        '$esc_project',
-        (SELECT COUNT(*) FROM sessions WHERE project='$esc_project' AND date(started_at)='$session_date' AND status IN ('completed','crashed')),
-        (SELECT COALESCE(SUM(duration_seconds),0) FROM sessions WHERE project='$esc_project' AND date(started_at)='$session_date'),
-        COALESCE(SUM(lines_added),0),
-        COALESCE(SUM(lines_removed),0),
-        COALESCE(SUM(lines_added),0) - COALESCE(SUM(lines_removed),0),
-        (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Write'),
-        (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Edit'),
-        (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Read'),
-        COUNT(*),
-        (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Bash'),
-        (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Bash' AND command_failed=1),
-        (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND tool_name IN ('Glob','Grep')),
-        (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND tool_name='Agent'),
-        '$(sql_escape "$skills_json")',
-        '$(sql_escape "$frameworks_json")',
-        '$(sql_escape "$languages_json")',
-        '$(sql_escape "$tool_counts_json")'
-    FROM tool_events WHERE session_id='$esc_sid'
-    ON CONFLICT(date, project) DO UPDATE SET
-        session_count = excluded.session_count,
-        total_duration_seconds = excluded.total_duration_seconds,
-        lines_added = daily_summaries.lines_added + excluded.lines_added,
-        lines_removed = daily_summaries.lines_removed + excluded.lines_removed,
-        net_lines = daily_summaries.net_lines + excluded.net_lines,
-        files_created = daily_summaries.files_created + excluded.files_created,
-        files_edited = daily_summaries.files_edited + excluded.files_edited,
-        files_read = daily_summaries.files_read + excluded.files_read,
-        tool_calls = daily_summaries.tool_calls + excluded.tool_calls,
-        bash_commands = daily_summaries.bash_commands + excluded.bash_commands,
-        bash_failures = daily_summaries.bash_failures + excluded.bash_failures,
-        searches = daily_summaries.searches + excluded.searches,
-        agents_spawned = daily_summaries.agents_spawned + excluded.agents_spawned,
-        skills_used = excluded.skills_used,
-        frameworks_detected = excluded.frameworks_detected,
-        languages = excluded.languages,
-        tool_counts = excluded.tool_counts;
-    " 2>/dev/null || true
+        frameworks_json="$(sqlite3 "$DB_PATH" "
+            SELECT '{' || GROUP_CONCAT('\"' || REPLACE(fw, '\"', '\\\"') || '\":' || cnt) || '}'
+            FROM (
+                SELECT TRIM(value) as fw, COUNT(*) as cnt
+                FROM tool_events, json_each('[\"' || REPLACE(REPLACE(detected_framework, ',', '\",\"'), ' ', '') || '\"]')
+                WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date'
+                AND detected_framework IS NOT NULL AND detected_framework != ''
+                AND TRIM(value) != ''
+                GROUP BY fw ORDER BY cnt DESC
+            );
+        " 2>/dev/null)" || frameworks_json="{}"
+        [ -z "$frameworks_json" ] || [ "$frameworks_json" = "{null}" ] && frameworks_json="{}"
+
+        languages_json="$(sqlite3 "$DB_PATH" "
+            SELECT '{' || GROUP_CONCAT('\"' || REPLACE(language, '\"', '\\\"') || '\":' || cnt) || '}'
+            FROM (SELECT language, COUNT(*) as cnt FROM tool_events
+                  WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date'
+                  AND language IS NOT NULL AND language != '' AND language != 'Unknown'
+                  GROUP BY language ORDER BY cnt DESC);
+        " 2>/dev/null)" || languages_json="{}"
+        [ -z "$languages_json" ] || [ "$languages_json" = "{null}" ] && languages_json="{}"
+
+        tool_counts_json="$(sqlite3 "$DB_PATH" "
+            SELECT '{' || GROUP_CONCAT('\"' || tool_name || '\":' || cnt) || '}'
+            FROM (SELECT tool_name, COUNT(*) as cnt FROM tool_events
+                  WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date'
+                  GROUP BY tool_name ORDER BY cnt DESC);
+        " 2>/dev/null)" || tool_counts_json="{}"
+        [ -z "$tool_counts_json" ] || [ "$tool_counts_json" = "{null}" ] && tool_counts_json="{}"
+
+        sqlite3 "$DB_PATH" "
+        INSERT INTO daily_summaries (date, project, session_count, total_duration_seconds,
+            lines_added, lines_removed, net_lines, files_created, files_edited, files_read,
+            tool_calls, bash_commands, bash_failures, searches, agents_spawned,
+            skills_used, frameworks_detected, languages, tool_counts)
+        SELECT
+            '$esc_date',
+            '$esc_project',
+            (SELECT COUNT(*) FROM sessions WHERE project='$esc_project' AND date(started_at)='$esc_date' AND status IN ('completed','crashed')),
+            (SELECT COALESCE(SUM(duration_seconds),0) FROM sessions WHERE project='$esc_project' AND date(started_at)='$esc_date'),
+            COALESCE(SUM(lines_added),0),
+            COALESCE(SUM(lines_removed),0),
+            COALESCE(SUM(lines_added),0) - COALESCE(SUM(lines_removed),0),
+            (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Write'),
+            (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Edit'),
+            (SELECT COUNT(DISTINCT file_path) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Read'),
+            COUNT(*),
+            (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Bash'),
+            (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Bash' AND command_failed=1),
+            (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name IN ('Glob','Grep')),
+            (SELECT COUNT(*) FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date' AND tool_name='Agent'),
+            '$(sql_escape "$skills_json")',
+            '$(sql_escape "$frameworks_json")',
+            '$(sql_escape "$languages_json")',
+            '$(sql_escape "$tool_counts_json")'
+        FROM tool_events WHERE session_id='$esc_sid' AND date(timestamp)='$esc_date'
+        ON CONFLICT(date, project) DO UPDATE SET
+            session_count = excluded.session_count,
+            total_duration_seconds = excluded.total_duration_seconds,
+            lines_added = daily_summaries.lines_added + excluded.lines_added,
+            lines_removed = daily_summaries.lines_removed + excluded.lines_removed,
+            net_lines = daily_summaries.net_lines + excluded.net_lines,
+            files_created = daily_summaries.files_created + excluded.files_created,
+            files_edited = daily_summaries.files_edited + excluded.files_edited,
+            files_read = daily_summaries.files_read + excluded.files_read,
+            tool_calls = daily_summaries.tool_calls + excluded.tool_calls,
+            bash_commands = daily_summaries.bash_commands + excluded.bash_commands,
+            bash_failures = daily_summaries.bash_failures + excluded.bash_failures,
+            searches = daily_summaries.searches + excluded.searches,
+            agents_spawned = daily_summaries.agents_spawned + excluded.agents_spawned,
+            skills_used = excluded.skills_used,
+            frameworks_detected = excluded.frameworks_detected,
+            languages = excluded.languages,
+            tool_counts = excluded.tool_counts;
+        " 2>/dev/null || true
+    done
 
     # Clean up tmp dir
     rm -rf "$SESSION_DIR" 2>/dev/null || true

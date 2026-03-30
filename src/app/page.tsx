@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+type TimeRange = "today" | "week" | "month" | "all";
+
 interface OverviewData {
+  range: string;
   kpis: {
     totalSessions: number;
     netLines: number;
@@ -29,6 +32,39 @@ interface OverviewData {
     tools: number;
     startedAt: string;
   }>;
+}
+
+const RANGE_LABELS: Record<TimeRange, string> = {
+  today: "Today",
+  week: "This Week",
+  month: "This Month",
+  all: "All Time",
+};
+
+function RangeSelector({
+  value,
+  onChange,
+}: {
+  value: TimeRange;
+  onChange: (v: TimeRange) => void;
+}) {
+  return (
+    <div className="flex gap-1 rounded-lg border border-zinc-800 p-1">
+      {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
+        <button
+          key={r}
+          onClick={() => onChange(r)}
+          className={`rounded-md px-3 py-1 font-mono text-xs transition-colors ${
+            value === r
+              ? "bg-violet-500/20 text-violet-300"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          {RANGE_LABELS[r]}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function KpiCard({
@@ -109,16 +145,18 @@ function formatDate(iso: string): string {
 export default function OverviewPage() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [range, setRange] = useState<TimeRange>("all");
 
   useEffect(() => {
-    fetch("/api/overview")
+    setData(null);
+    fetch(`/api/overview?range=${range}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [range]);
 
   if (error) {
     return (
@@ -137,7 +175,10 @@ export default function OverviewPage() {
   if (!data) {
     return (
       <div className="space-y-6">
-        <h1 className="font-mono text-lg font-semibold">Overview</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-mono text-lg font-semibold">Overview</h1>
+          <RangeSelector value={range} onChange={setRange} />
+        </div>
         <div className="grid grid-cols-5 gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <div
@@ -154,13 +195,17 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="font-mono text-lg font-semibold">Overview</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-mono text-lg font-semibold">Overview</h1>
+        <RangeSelector value={range} onChange={setRange} />
+      </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-5 gap-4">
         <KpiCard
-          label="Total Sessions"
+          label="Sessions"
           value={kpis.totalSessions.toLocaleString()}
+          sub={RANGE_LABELS[range]}
         />
         <KpiCard
           label="Lines Written"
@@ -168,8 +213,9 @@ export default function OverviewPage() {
           sub="net"
         />
         <KpiCard
-          label="Total Time"
+          label="Time"
           value={`${kpis.totalHours.toFixed(1)}h`}
+          sub={RANGE_LABELS[range]}
         />
         <KpiCard
           label="Projects"

@@ -56,33 +56,64 @@ function toSortedPairs(
     .sort((a, b) => b.count - a.count);
 }
 
-export async function GET() {
+function getRangeStart(range: string): string | null {
+  const now = new Date();
+  switch (range) {
+    case "today": {
+      return now.toISOString().split("T")[0];
+    }
+    case "week": {
+      const d = new Date(now);
+      d.setDate(d.getDate() - d.getDay()); // start of week (Sunday)
+      return d.toISOString().split("T")[0];
+    }
+    case "month": {
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    }
+    case "all":
+    default:
+      return null;
+  }
+}
+
+export async function GET(request: Request) {
   try {
     const db = getDb();
+    const { searchParams } = new URL(request.url);
+    const range = searchParams.get("range") || "all";
+    const rangeStart = getRangeStart(range);
 
-    // Total sessions and duration
+    // Build date filter clauses
+    const sessionDateFilter = rangeStart
+      ? `WHERE started_at >= '${rangeStart}'`
+      : "";
+    const summaryDateFilter = rangeStart
+      ? `WHERE date >= '${rangeStart}'`
+      : "";
+
+    // Total sessions and duration (filtered by range)
     const totals = db
       .prepare(
         `SELECT
           COUNT(*) as total_sessions,
           COALESCE(SUM(duration_seconds), 0) as total_duration,
           COUNT(DISTINCT project) as project_count
-        FROM sessions`
+        FROM sessions ${sessionDateFilter}`
       )
       .get() as { total_sessions: number; total_duration: number; project_count: number };
 
-    // Total lines from daily_summaries
+    // Total lines from daily_summaries (filtered by range)
     const lineTotals = db
       .prepare(
         `SELECT
           COALESCE(SUM(lines_added), 0) as total_added,
           COALESCE(SUM(lines_removed), 0) as total_removed,
           COALESCE(SUM(net_lines), 0) as total_net
-        FROM daily_summaries`
+        FROM daily_summaries ${summaryDateFilter}`
       )
       .get() as { total_added: number; total_removed: number; total_net: number };
 
-    // Current streak: consecutive days with sessions ending today or yesterday
+    // Current streak (always computed from all data)
     const streakDays = db
       .prepare(
         `SELECT DISTINCT date(started_at) as d
@@ -97,7 +128,6 @@ export async function GET() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Check if the most recent day is today or yesterday
       const mostRecent = new Date(streakDays[0].d + "T00:00:00");
       const diffFromToday = Math.floor(
         (today.getTime() - mostRecent.getTime()) / 86400000
@@ -150,11 +180,11 @@ export async function GET() {
       tools: r.tool_calls,
     }));
 
-    // Aggregate skills, frameworks, tools across all daily summaries
+    // Aggregate skills, frameworks, tools (filtered by range)
     const allSummaries = db
       .prepare(
         `SELECT skills_used, frameworks_detected, tool_counts
-        FROM daily_summaries`
+        FROM daily_summaries ${summaryDateFilter}`
       )
       .all() as Array<{
       skills_used: string;
@@ -170,7 +200,7 @@ export async function GET() {
     const topFrameworks = toSortedPairs(mergeJsonCounts(fwMaps)).slice(0, 10);
     const toolDistribution = toSortedPairs(mergeJsonCounts(toolMaps)).slice(0, 10);
 
-    // Recent 10 sessions with basic stats
+    // Recent 10 sessions with basic stats (filtered by range)
     const recentSessions = db
       .prepare(
         `SELECT
@@ -184,6 +214,7 @@ export async function GET() {
           COALESCE(SUM(e.lines_removed), 0) as lines_removed
         FROM sessions s
         LEFT JOIN tool_events e ON e.session_id = s.id
+        ${sessionDateFilter}
         GROUP BY s.id
         ORDER BY s.started_at DESC
         LIMIT 10`
@@ -191,6 +222,7 @@ export async function GET() {
       .all() as SessionRow[];
 
     return Response.json({
+      range,
       kpis: {
         totalSessions: totals.total_sessions,
         netLines: lineTotals.total_net,
