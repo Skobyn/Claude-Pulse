@@ -12,6 +12,7 @@ const navItems = [
   { href: "/brain", label: "Brain", icon: "◉" },
   { href: "/projects", label: "Projects", icon: "◆" },
   { href: "/timeline", label: "Timeline", icon: "▤" },
+  { href: "/skills", label: "Skills", icon: "◎" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];
 
